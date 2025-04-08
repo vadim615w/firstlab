@@ -1,53 +1,58 @@
 import re
 import random
+import webbrowser
+import requests
 from datetime import datetime
 
-weather = {
-    r"москва|москве": ["Облачно", "Дождь", "Солнечно", "Небольшой снег"],
-    r"санкт-петербург|санкт-петербурге": ["Пасмурно", "Мелкий дождь", "Ясно", "Легкий ветер"],
-    r"новосибирск|новосибирске": ["Морозно", "Снегопад", "Ясно", "Прохладно"],
-    r"владивосток|владивостоке": ["Облачно", "Дождь", "Солнечно", "Туманно"],
-    r"сочи|сочи": ["Жарко", "Солнечно", "Небольшой дождь", "Тепло"],
-    r"нижний|нижний новгород|нижнем|нижнем новгороде": ["Жарко", "Солнечно", "Небольшой дождь", "Тепло"]
-}
+KEY = "c954e0d06e66e6c55bc1fa26fb7f75d2"
+
 
 answers = {
     r"^привет$|^ку$|^здравствуйте$|^доброе утро$|^салют$|^йоу$|^кчау$": "Привет! Как я могу помочь?",
-    r"как тебя зовут|имя|какое у тебя имя|\?": "Я бот-помощник!",
-    r"что ты умеешь|команды|какие задачи ты умеешь решать|задачи|\?": "Я умею подсказывать время, дату, погоду, вычислять арифметические примеры. Также у меня есть игры: 'подбрось монетку', 'выбери число', 'камень ножницы бумага'.",
-    r"который час|время|сколько времени|\?": lambda: f"Текущее время: {datetime.now().strftime('%H:%M:%S')}",
-    r"погода$": "Я могу подсказать погоду в Москве, Санкт-Петербурге, Новосибирске, Владивостоке, Сочи и Нижнем Новгороде.",
-    r"какая сегодня дата|дата|число|какое сегодня число|\?": lambda: f"Сегодняшняя дата: {datetime.now().strftime('%d.%m.%Y')}",
+    r"как тебя зовут|имя|какое у тебя имя": "Я бот-помощник!",
+    r"что ты умеешь|команды|какие задачи ты умеешь решать|задачи": "Я умею подсказывать время, дату, погоду, вычислять арифметические примеры. Также у меня есть игры: 'подбрось монетку', 'выбери число', 'камень ножницы бумага'.",
+    r"который час|время|сколько времени": lambda: f"Текущее время: {datetime.now().strftime('%H:%M:%S')}",
+    r"какая сегодня дата|дата|число|какое сегодня число": lambda: f"Сегодняшняя дата: {datetime.now().strftime('%d.%m.%Y')}",
     r"подбрось монетку|монетка|орел или решка": lambda: f"Результат: {'Орёл' if random.randint(0, 1) == 0 else 'Решка'}",
     r"выбери число|случайное число": lambda: f"Выбираю случайное число от 1 до 10: {random.randint(1, 10)}",
+    r"как дела": lambda: random.choice([
+        "Спасибо, что спросили! У меня всё в порядке.",
+        "Всё отлично, рад помочь!",
+        "Всё хорошо, а как у вас?",
+        "Дела прекрасно! А у вас как?"
+    ]),
 }
 
 
-def get_weather(city):
-    city = city.lower()
-    for pattern, weather_list in weather.items():
-        if re.search(pattern, city):
-            return random.choice(weather_list)
-    return None
-
+def get_real_weather(city):
+    try:
+        url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={KEY}&lang=ru&units=metric"
+        response = requests.get(url)
+        data = response.json()
+        description = data["weather"][0]["description"]
+        temp = data["main"]["temp"]
+        return f"{description.capitalize()}, температура {temp}°C"
+    except:
+        return None
 
 def parse_weather_request(text):
     weather_patterns = [
-        r"погода (\w+)",
-        r"погода в (\w+)",
-        r"какая погода в (\w+)",
-        r"какая погода (\w+)"
+        r"погода в ([\w\- ]+)",
+        r"какая погода в ([\w\- ]+)",
+        r"какая погода ([\w\- ]+)",
+        r"погода ([\w\- ]+)"
     ]
 
     for pattern in weather_patterns:
         match = re.search(pattern, text.lower())
         if match:
             city = match.group(1)
-            weather_result = get_weather(city)
-            if weather_result:
-                return f"Погода в {city.capitalize()}: {weather_result}"
+            real_weather = get_real_weather(city)
+            if real_weather:
+                return f"Погода в {city.capitalize()}: {real_weather}"
+            else:
+                return "Не удалось получить погоду."
     return None
-
 
 def parse_math(text):
     try:
@@ -64,7 +69,6 @@ def play_rps(text):
     game_pattern = r"камень|ножницы|бумага"
     if re.search(game_pattern, text.lower()):
         player_choice = None
-
         if "камень" in text.lower():
             player_choice = "камень"
         elif "ножницы" in text.lower():
@@ -74,8 +78,6 @@ def play_rps(text):
 
         if player_choice:
             bot_choice = random.choice(["камень", "ножницы", "бумага"])
-            result = ""
-
             if player_choice == bot_choice:
                 result = "Ничья!"
             elif (player_choice == "камень" and bot_choice == "ножницы") or \
@@ -84,41 +86,66 @@ def play_rps(text):
                 result = "Вы выиграли!"
             else:
                 result = "Я выиграл!"
-
             return f"Вы: {player_choice}, Я: {bot_choice}. {result}"
     return None
 
 
+def parse_search_request(text):
+    match = re.search(r"поиск (.+)", text.lower())
+    if match:
+        query = match.group(1)
+        url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        webbrowser.open(url)
+        return f"Ищу в интернете: {query}"
+    return None
+
+
 def bot_reply(text):
-    text = text.lower()
+    text = text.strip().lower()
+    response = None
 
-    if "подбрось монетку" in text or "монетка" in text or "орел или решка" in text:
-        return f"Результат: {'Орёл' if random.randint(0, 1) == 0 else 'Решка'}"
+    # Игры
+    if "монетка" in text or "орел или решка" in text:
+        response = f"Результат: {'Орёл' if random.randint(0, 1) == 0 else 'Решка'}"
+    elif "выбери число" in text or "случайное число" in text:
+        response = f"Выбираю случайное число от 1 до 10: {random.randint(1, 10)}"
 
-    if "выбери число" in text or "случайное число" in text:
-        return f"Выбираю случайное число от 1 до 10: {random.randint(1, 10)}"
+    # Камень-ножницы-бумага
+    if not response:
+        response = play_rps(text)
 
-    game_result = play_rps(text)
-    if game_result:
-        return game_result
+    # Погода
+    if not response:
+        response = parse_weather_request(text)
 
-    weather_result = parse_weather_request(text)
-    if weather_result:
-        return weather_result
+    # Поиск
+    if not response:
+        response = parse_search_request(text)
 
-    math_result = parse_math(text)
-    if math_result:
-        return math_result
+    # Математика
+    if not response:
+        response = parse_math(text)
 
-    for pattern, answer in answers.items():
-        if re.search(pattern, text):
-            return answer() if callable(answer) else answer
+    # Шаблонные ответы
+    if not response:
+        for pattern, answer in answers.items():
+            if re.search(pattern, text):
+                response = answer() if callable(answer) else answer
+                break
 
-    return random.choice([
-        "Я не понял вопрос.",
-        "Попробуйте перефразировать.",
-        "Извините, я не могу ответить на этот вопрос."
-    ])
+    # Непонятный вопрос
+    if not response:
+        response = random.choice([
+            "Я не понял вопрос.",
+            "Попробуйте перефразировать.",
+            "Извините, я не могу ответить на этот вопрос."
+        ])
+
+    # Логирование
+    with open("chat_log.txt", "a", encoding="utf-8") as f:
+        f.write(f"Пользователь: {text}\nБот: {response}\n\n")
+
+    return response
 
 
 if __name__ == "__main__":
